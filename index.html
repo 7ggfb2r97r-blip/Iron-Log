@@ -4,6 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Iron Log</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#121316" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Iron Log" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+
 <style>
   html, body { margin: 0; padding: 0; background: #0b0c0e; min-height: 100vh; }
   #root { min-height: 100vh; display: flex; justify-content: center; padding: 24px 0; box-sizing: border-box; }
@@ -17,7 +24,6 @@
   <p id="fallback-msg">Unbekannter Fehler.</p>
 </div>
 
-<!-- React 18 (UMD, bundled inline - no network needed) -->
 <script>
 /**
  * @license React
@@ -52,7 +58,6 @@ c.useState=function(a){return g.current.useState(a)};c.useSyncExternalStore=func
 })();
 
 </script>
-<!-- ReactDOM 18 (UMD, bundled inline - no network needed) -->
 <script>
 /**
  * @license React
@@ -371,7 +376,6 @@ window.onerror = function (msg) {
 };
 </script>
 
-<!-- App code (precompiled from JSX, plain JS, no runtime transform needed) -->
 <script>
 function IconBase({ size = 18, color = "currentColor", strokeWidth = 2, children }) {
   return /* @__PURE__ */ React.createElement(
@@ -511,6 +515,7 @@ const EXERCISES = [
 ];
 const PLANS_KEY = "workout-plans-v1";
 const SESSIONS_KEY = "workout-sessions-v1";
+const REST_DURATION = 120;
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const fmtDate = (iso) => new Date(iso).toLocaleDateString("de-DE", { day: "numeric", month: "short" });
 const fmtDateFull = (iso) => new Date(iso).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
@@ -649,75 +654,86 @@ function PRDot(props) {
   }
   return /* @__PURE__ */ React.createElement("circle", { cx, cy, r: 3.5, fill: C.accent });
 }
-function SwipeToDelete({ children, onDelete, borderRadius = 14 }) {
-  const REVEAL = 78;
-  const [translateX, setTranslateX] = useState(0);
-  const dragging = React.useRef(false);
-  const startX = React.useRef(0);
-  const startTranslate = React.useRef(0);
-  const moved = React.useRef(false);
-  const onPointerDown = (e) => {
-    dragging.current = true;
-    moved.current = false;
-    startX.current = e.clientX;
-    startTranslate.current = translateX;
+function HoldToDelete({ onDelete, size = 32 }) {
+  const HOLD_MS = 650;
+  const [progress, setProgress] = useState(0);
+  const [holding, setHolding] = useState(false);
+  const rafRef = useRef(null);
+  const startRef = useRef(0);
+  const tick = () => {
+    const elapsed = Date.now() - startRef.current;
+    const p = Math.min(1, elapsed / HOLD_MS);
+    setProgress(p);
+    if (p >= 1) {
+      if (navigator.vibrate) navigator.vibrate(30);
+      onDelete();
+      setHolding(false);
+      setProgress(0);
+      return;
+    }
+    rafRef.current = requestAnimationFrame(tick);
   };
-  const onPointerMove = (e) => {
-    if (!dragging.current) return;
-    const dx = e.clientX - startX.current;
-    if (Math.abs(dx) > 4) moved.current = true;
-    let next = startTranslate.current + dx;
-    next = Math.min(0, Math.max(next, -(REVEAL + 16)));
-    setTranslateX(next);
+  const start = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    startRef.current = Date.now();
+    setHolding(true);
+    rafRef.current = requestAnimationFrame(tick);
   };
-  const endDrag = () => {
-    if (!dragging.current) return;
-    dragging.current = false;
-    setTranslateX(translateX < -REVEAL / 2 ? -REVEAL : 0);
+  const cancel = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    setHolding(false);
+    setProgress(0);
   };
-  return /* @__PURE__ */ React.createElement("div", { style: { position: "relative", overflow: "hidden", borderRadius } }, /* @__PURE__ */ React.createElement("div", { style: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: REVEAL,
-    background: C.danger,
-    display: "flex",
-    alignItems: "stretch",
-    justifyContent: "center"
-  } }, /* @__PURE__ */ React.createElement(
+  useEffect(() => () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+  }, []);
+  const r = (size - 7) / 2;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference * (1 - progress);
+  return /* @__PURE__ */ React.createElement(
     "button",
     {
-      onClick: () => {
-        onDelete();
-        setTranslateX(0);
-      },
-      style: { background: "none", border: "none", width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, color: "#fff" }
-    },
-    /* @__PURE__ */ React.createElement(Trash2, { size: 17 }),
-    /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9.5, fontWeight: 700 } }, "L\xF6schen")
-  )), /* @__PURE__ */ React.createElement(
-    "div",
-    {
-      onPointerDown,
-      onPointerMove,
-      onPointerUp: endDrag,
-      onPointerLeave: endDrag,
-      onClickCapture: (e) => {
-        if (moved.current) {
-          e.stopPropagation();
-          e.preventDefault();
-        }
-      },
+      onPointerDown: start,
+      onPointerUp: cancel,
+      onPointerLeave: cancel,
+      onPointerCancel: cancel,
+      onClick: (e) => e.preventDefault(),
       style: {
-        transform: `translateX(${translateX}px)`,
-        transition: dragging.current ? "none" : "transform .22s cubic-bezier(.22,.61,.36,1)",
-        touchAction: "pan-y",
-        background: C.bg
+        position: "relative",
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        flexShrink: 0,
+        background: holding ? C.dangerDim : C.surfaceAlt,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        touchAction: "none"
       }
     },
-    children
-  ));
+    /* @__PURE__ */ React.createElement("svg", { width: size, height: size, style: { position: "absolute", top: 0, left: 0, transform: "rotate(-90deg)" } }, /* @__PURE__ */ React.createElement("circle", { cx: size / 2, cy: size / 2, r, fill: "none", stroke: C.border, strokeWidth: "3" }), /* @__PURE__ */ React.createElement(
+      "circle",
+      {
+        cx: size / 2,
+        cy: size / 2,
+        r,
+        fill: "none",
+        stroke: C.danger,
+        strokeWidth: "3",
+        strokeDasharray: circumference,
+        strokeDashoffset: offset,
+        strokeLinecap: "round",
+        style: { transition: progress === 0 ? "stroke-dashoffset .15s ease-out" : "none" }
+      }
+    )),
+    /* @__PURE__ */ React.createElement(Trash2, { size: Math.round(size * 0.44), color: holding ? C.danger : C.textFaint })
+  );
 }
 function IronMark({ size = 26 }) {
   return /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 30 30", style: { flexShrink: 0 } }, /* @__PURE__ */ React.createElement("circle", { cx: "15", cy: "15", r: "13", fill: "none", stroke: C.accent, strokeWidth: "3" }), /* @__PURE__ */ React.createElement("circle", { cx: "15", cy: "15", r: "7.5", fill: "none", stroke: C.accent, strokeWidth: "2", opacity: "0.55" }), /* @__PURE__ */ React.createElement("circle", { cx: "15", cy: "15", r: "2.5", fill: C.accent }));
@@ -737,6 +753,10 @@ function App() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [workoutStartTime, setWorkoutStartTime] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [restRemaining, setRestRemaining] = useState(null);
+  const [restFinished, setRestFinished] = useState(false);
+  const restEndRef = useRef(null);
+  const restIntervalRef = useRef(null);
   const [expandedSessionId, setExpandedSessionId] = useState(null);
   const [progressExerciseId, setProgressExerciseId] = useState(null);
   useEffect(() => {
@@ -768,6 +788,59 @@ function App() {
     const id = setInterval(tick, 1e3);
     return () => clearInterval(id);
   }, [view, workoutStartTime]);
+  useEffect(() => {
+    return () => {
+      if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    };
+  }, []);
+  const playRestEndSound = () => {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new Ctx();
+      const beep = (time, freq) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(1e-4, time);
+        gain.gain.exponentialRampToValueAtTime(0.3, time + 0.01);
+        gain.gain.exponentialRampToValueAtTime(1e-4, time + 0.18);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(time);
+        osc.stop(time + 0.2);
+      };
+      const now = ctx.currentTime;
+      beep(now, 880);
+      beep(now + 0.25, 880);
+      beep(now + 0.5, 1046.5);
+    } catch (e) {
+    }
+  };
+  const startRestTimer = (duration) => {
+    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    restEndRef.current = Date.now() + duration * 1e3;
+    setRestRemaining(duration);
+    setRestFinished(false);
+    restIntervalRef.current = setInterval(() => {
+      const left = Math.round((restEndRef.current - Date.now()) / 1e3);
+      if (left <= 0) {
+        clearInterval(restIntervalRef.current);
+        restIntervalRef.current = null;
+        setRestRemaining(0);
+        setRestFinished(true);
+        playRestEndSound();
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      } else {
+        setRestRemaining(left);
+      }
+    }, 250);
+  };
+  const stopRestTimer = () => {
+    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    restIntervalRef.current = null;
+    setRestRemaining(null);
+    setRestFinished(false);
+  };
   const persistPlans = async (next) => {
     setPlans(next);
     try {
@@ -854,6 +927,7 @@ function App() {
     if (expandedSessionId === id) setExpandedSessionId(null);
   };
   const startWorkout = (plan) => {
+    stopRestTimer();
     setWorkoutStartTime(Date.now());
     setElapsedSeconds(0);
     setActiveSession({
@@ -905,6 +979,7 @@ function App() {
     setActiveSession((s) => ({ ...s, entries: s.entries.filter((_, i) => i !== eIdx) }));
   };
   const finishWorkout = () => {
+    stopRestTimer();
     const durationSeconds = workoutStartTime ? Math.floor((Date.now() - workoutStartTime) / 1e3) : elapsedSeconds;
     const session = { id: uid(), date: (/* @__PURE__ */ new Date()).toISOString(), planId: activeSession.planId, planName: activeSession.planName, entries: activeSession.entries, durationSeconds };
     persistSessions([...sessions, session]);
@@ -916,6 +991,7 @@ function App() {
     setView("home");
   };
   const cancelWorkout = () => {
+    stopRestTimer();
     setActiveSession(null);
     setShowCancelConfirm(false);
     setWorkoutStartTime(null);
@@ -968,9 +1044,9 @@ function App() {
     alignItems: "center",
     justifyContent: "center",
     gap: 5
-  } }, /* @__PURE__ */ React.createElement(PlayCircle, { size: 14 }), " Start")))), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.body, fontWeight: 700, fontSize: 13.5, textTransform: "uppercase", letterSpacing: 0.5, color: C.textSoft, marginBottom: 10 } }, "Letzte Aktivit\xE4t"), recentSessions.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.textFaint } }, "Noch keine Workouts geloggt.") : recentSessions.map((s) => /* @__PURE__ */ React.createElement("div", { key: s.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: `1px solid ${C.border}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 600 } }, s.planName), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: C.textFaint } }, fmtDate(s.date))), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.mono, fontSize: 13, color: C.accent } }, Math.round(sessionVolume(s)), " kg")))), view === "plans" && /* @__PURE__ */ React.createElement("div", { style: { padding: "22px 18px 90px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.display, fontSize: 26, letterSpacing: 1 } }, "MEINE PL\xC4NE"), /* @__PURE__ */ React.createElement("button", { onClick: openNewPlan, style: { background: C.accent, border: "none", borderRadius: 9, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Plus, { size: 18, color: C.bg }))), plans.length === 0 && /* @__PURE__ */ React.createElement(EmptyState, { icon: ClipboardList, title: "Keine Pl\xE4ne", subtitle: "Erstelle deinen ersten Trainingsplan." }), plans.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.textFaint, marginBottom: 10 } }, "\u2190 Nach links wischen zum L\xF6schen"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, plans.map((p) => {
+  } }, /* @__PURE__ */ React.createElement(PlayCircle, { size: 14 }), " Start")))), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.body, fontWeight: 700, fontSize: 13.5, textTransform: "uppercase", letterSpacing: 0.5, color: C.textSoft, marginBottom: 10 } }, "Letzte Aktivit\xE4t"), recentSessions.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.textFaint } }, "Noch keine Workouts geloggt.") : recentSessions.map((s) => /* @__PURE__ */ React.createElement("div", { key: s.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: `1px solid ${C.border}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 600 } }, s.planName), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: C.textFaint } }, fmtDate(s.date))), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.mono, fontSize: 13, color: C.accent } }, Math.round(sessionVolume(s)), " kg")))), view === "plans" && /* @__PURE__ */ React.createElement("div", { style: { padding: "22px 18px 90px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.display, fontSize: 26, letterSpacing: 1 } }, "MEINE PL\xC4NE"), /* @__PURE__ */ React.createElement("button", { onClick: openNewPlan, style: { background: C.accent, border: "none", borderRadius: 9, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Plus, { size: 18, color: C.bg }))), plans.length === 0 && /* @__PURE__ */ React.createElement(EmptyState, { icon: ClipboardList, title: "Keine Pl\xE4ne", subtitle: "Erstelle deinen ersten Trainingsplan." }), plans.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.textFaint, marginBottom: 10 } }, "Papierkorb gedr\xFCckt halten zum L\xF6schen"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, plans.map((p) => {
     const groups = Array.from(new Set(p.exercises.map((e) => e.group)));
-    return /* @__PURE__ */ React.createElement(SwipeToDelete, { key: p.id, onDelete: () => deletePlan(p.id) }, /* @__PURE__ */ React.createElement("div", { style: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15.5 } }, p.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: C.textFaint, marginTop: 2 } }, p.exercises.length, " \xDCbungen")), /* @__PURE__ */ React.createElement("button", { onClick: () => openEditPlan(p), style: { background: C.surfaceAlt, border: "none", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Pencil, { size: 13, color: C.textSoft }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, flexWrap: "wrap", margin: "10px 0 12px" } }, groups.map((g) => /* @__PURE__ */ React.createElement("span", { key: g, style: { fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 999, background: `${GROUP_COLOR[g]}22`, color: GROUP_COLOR[g] } }, g))), /* @__PURE__ */ React.createElement("button", { onClick: () => startWorkout(p), style: {
+    return /* @__PURE__ */ React.createElement("div", { key: p.id, style: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15.5 } }, p.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: C.textFaint, marginTop: 2 } }, p.exercises.length, " \xDCbungen")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => openEditPlan(p), style: { background: C.surfaceAlt, border: "none", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Pencil, { size: 13, color: C.textSoft })), /* @__PURE__ */ React.createElement(HoldToDelete, { onDelete: () => deletePlan(p.id) }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, flexWrap: "wrap", margin: "10px 0 12px" } }, groups.map((g) => /* @__PURE__ */ React.createElement("span", { key: g, style: { fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 999, background: `${GROUP_COLOR[g]}22`, color: GROUP_COLOR[g] } }, g))), /* @__PURE__ */ React.createElement("button", { onClick: () => startWorkout(p), style: {
       width: "100%",
       background: C.accent,
       color: C.bg,
@@ -984,7 +1060,7 @@ function App() {
       alignItems: "center",
       justifyContent: "center",
       gap: 6
-    } }, /* @__PURE__ */ React.createElement(PlayCircle, { size: 15 }), " Workout starten")));
+    } }, /* @__PURE__ */ React.createElement(PlayCircle, { size: 15 }), " Workout starten"));
   }))), view === "editor" && editingPlan && /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 18px 30px", maxHeight: 640, overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 18 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setView("plans"), style: { background: "none", border: "none" } }, /* @__PURE__ */ React.createElement(ArrowLeft, { size: 20, color: C.textSoft })), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.display, fontSize: 22, letterSpacing: 1 } }, editingPlan.id ? "PLAN BEARBEITEN" : "NEUER PLAN")), /* @__PURE__ */ React.createElement(
     "input",
     {
@@ -1036,7 +1112,7 @@ function App() {
     fontFamily: F.body,
     fontWeight: 700,
     fontSize: 13.5
-  } }, "Plan speichern"))), view === "workout" && activeSession && /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 18px 110px", maxHeight: 640, overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.display, fontSize: 24, letterSpacing: 1 } }, activeSession.planName.toUpperCase()), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement(Clock, { size: 12, color: C.accent }), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: F.mono, fontSize: 13, color: C.accent, fontWeight: 600 } }, fmtDuration(elapsedSeconds)))), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowCancelConfirm(true), style: { background: C.dangerDim, border: "none", borderRadius: 9, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(X, { size: 16, color: C.danger }))), showCancelConfirm && /* @__PURE__ */ React.createElement("div", { style: { background: C.surface, border: `1px solid ${C.danger}`, borderRadius: 12, padding: 14, marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, marginBottom: 10 } }, "Workout wirklich abbrechen? Nichts wird gespeichert."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setShowCancelConfirm(false), style: { flex: 1, background: C.surfaceAlt, border: "none", borderRadius: 8, padding: "9px 0", color: C.text, fontSize: 12.5, fontWeight: 700 } }, "Weiter"), /* @__PURE__ */ React.createElement("button", { onClick: cancelWorkout, style: { flex: 1, background: C.danger, border: "none", borderRadius: 8, padding: "9px 0", color: "#fff", fontSize: 12.5, fontWeight: 700 } }, "Abbrechen"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, activeSession.entries.map((ex, eIdx) => /* @__PURE__ */ React.createElement(SwipeToDelete, { key: ex.exerciseId, onDelete: () => removeExerciseFromSession(eIdx) }, /* @__PURE__ */ React.createElement("div", { style: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 14px 14px 12px", display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(GroupBar, { group: ex.group }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14.5 } }, ex.name), ex.assisted && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9.5, fontWeight: 700, color: C.steel, background: `${C.steel}22`, borderRadius: 999, padding: "2px 7px" } }, "\u2212KG Unterst\xFCtzung")), ex.lastSets && ex.lastSets.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 5, marginBottom: 6 } }, /* @__PURE__ */ React.createElement(HistoryIcon, { size: 11, color: C.textFaint }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, color: C.textFaint } }, "Letztes Mal (", fmtDate(ex.lastDate), "): ", ex.lastSets.map((st) => `${st.weight || 0}kg\xD7${st.reps || 0}`).join(", "))), ex.suggestion && /* @__PURE__ */ React.createElement("div", { style: {
+  } }, "Plan speichern"))), view === "workout" && activeSession && /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 18px 110px", maxHeight: 640, overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.display, fontSize: 24, letterSpacing: 1 } }, activeSession.planName.toUpperCase()), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement(Clock, { size: 12, color: C.accent }), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: F.mono, fontSize: 13, color: C.accent, fontWeight: 600 } }, fmtDuration(elapsedSeconds)))), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowCancelConfirm(true), style: { background: C.dangerDim, border: "none", borderRadius: 9, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(X, { size: 16, color: C.danger }))), showCancelConfirm && /* @__PURE__ */ React.createElement("div", { style: { background: C.surface, border: `1px solid ${C.danger}`, borderRadius: 12, padding: 14, marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, marginBottom: 10 } }, "Workout wirklich abbrechen? Nichts wird gespeichert."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setShowCancelConfirm(false), style: { flex: 1, background: C.surfaceAlt, border: "none", borderRadius: 8, padding: "9px 0", color: C.text, fontSize: 12.5, fontWeight: 700 } }, "Weiter"), /* @__PURE__ */ React.createElement("button", { onClick: cancelWorkout, style: { flex: 1, background: C.danger, border: "none", borderRadius: 8, padding: "9px 0", color: "#fff", fontSize: 12.5, fontWeight: 700 } }, "Abbrechen"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, activeSession.entries.map((ex, eIdx) => /* @__PURE__ */ React.createElement("div", { key: ex.exerciseId, style: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 14px 14px 12px", display: "flex", gap: 12 } }, /* @__PURE__ */ React.createElement(GroupBar, { group: ex.group }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14.5 } }, ex.name), ex.assisted && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9.5, fontWeight: 700, color: C.steel, background: `${C.steel}22`, borderRadius: 999, padding: "2px 7px" } }, "\u2212KG Unterst\xFCtzung")), /* @__PURE__ */ React.createElement(HoldToDelete, { onDelete: () => removeExerciseFromSession(eIdx), size: 28 })), ex.lastSets && ex.lastSets.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 5, marginBottom: 6 } }, /* @__PURE__ */ React.createElement(HistoryIcon, { size: 11, color: C.textFaint }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, color: C.textFaint } }, "Letztes Mal (", fmtDate(ex.lastDate), "): ", ex.lastSets.map((st) => `${st.weight || 0}kg\xD7${st.reps || 0}`).join(", "))), ex.suggestion && /* @__PURE__ */ React.createElement("div", { style: {
     display: "inline-flex",
     alignItems: "center",
     gap: 5,
@@ -1061,8 +1137,27 @@ function App() {
         placeholder: lastSet ? String(Math.abs(Number(lastSet.weight) || 0)) : "0",
         style: { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 9, color: C.text, fontFamily: F.mono, fontSize: 16, fontWeight: 600, textAlign: "center", padding: "9px 4px 9px 18px", outline: "none" }
       }
-    )) : /* @__PURE__ */ React.createElement(NumField, { value: st.weight, onChange: (v) => updateSet(eIdx, sIdx, "weight", v), placeholder: lastSet ? String(lastSet.weight || 0) : "0" }), /* @__PURE__ */ React.createElement(NumField, { value: st.reps, onChange: (v) => updateSet(eIdx, sIdx, "reps", v), placeholder: lastSet ? String(lastSet.reps || 0) : "0" }), /* @__PURE__ */ React.createElement(NumField, { value: st.rir, onChange: (v) => updateSet(eIdx, sIdx, "rir", v), placeholder: lastSet && lastSet.rir !== "" && lastSet.rir != null ? String(lastSet.rir) : "\u2013", compact: true }), /* @__PURE__ */ React.createElement(PlateCheck, { done: st.done, onClick: () => updateSet(eIdx, sIdx, "done", !st.done) }), ex.sets.length > 1 ? /* @__PURE__ */ React.createElement("button", { onClick: () => removeSet(eIdx, sIdx), style: { background: "none", border: "none", padding: 2, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(X, { size: 13, color: C.textFaint })) : /* @__PURE__ */ React.createElement("span", null));
-  }), /* @__PURE__ */ React.createElement("button", { onClick: () => addSet(eIdx), style: { marginTop: 4, background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Plus, { size: 13 }), " Satz")))))), activeSession.entries.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: C.textFaint, textAlign: "center", marginTop: 10 } }, "\u2190 \xDCbung nach links wischen, um sie nur heute zu \xFCberspringen"), /* @__PURE__ */ React.createElement("button", { onClick: finishWorkout, style: {
+    )) : /* @__PURE__ */ React.createElement(NumField, { value: st.weight, onChange: (v) => updateSet(eIdx, sIdx, "weight", v), placeholder: lastSet ? String(lastSet.weight || 0) : "0" }), /* @__PURE__ */ React.createElement(NumField, { value: st.reps, onChange: (v) => updateSet(eIdx, sIdx, "reps", v), placeholder: lastSet ? String(lastSet.reps || 0) : "0" }), /* @__PURE__ */ React.createElement(NumField, { value: st.rir, onChange: (v) => updateSet(eIdx, sIdx, "rir", v), placeholder: lastSet && lastSet.rir !== "" && lastSet.rir != null ? String(lastSet.rir) : "\u2013", compact: true }), /* @__PURE__ */ React.createElement(PlateCheck, { done: st.done, onClick: () => {
+      const newDone = !st.done;
+      updateSet(eIdx, sIdx, "done", newDone);
+      if (newDone) startRestTimer(REST_DURATION);
+    } }), ex.sets.length > 1 ? /* @__PURE__ */ React.createElement("button", { onClick: () => removeSet(eIdx, sIdx), style: { background: "none", border: "none", padding: 2, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(X, { size: 13, color: C.textFaint })) : /* @__PURE__ */ React.createElement("span", null));
+  }), /* @__PURE__ */ React.createElement("button", { onClick: () => addSet(eIdx), style: { marginTop: 4, background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Plus, { size: 13 }), " Satz"))))), activeSession.entries.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: C.textFaint, textAlign: "center", marginTop: 10 } }, "Papierkorb an einer \xDCbung gedr\xFCckt halten, um sie nur heute zu \xFCberspringen"), restRemaining !== null && /* @__PURE__ */ React.createElement("div", { style: {
+    position: "sticky",
+    bottom: 8,
+    marginTop: 16,
+    zIndex: 5,
+    background: restFinished ? C.accent : C.surfaceHi,
+    border: `1px solid ${restFinished ? C.accent : C.accentBorder}`,
+    borderRadius: 14,
+    padding: "12px 14px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+    animation: restFinished ? "ilPop .4s ease-out" : "none"
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement(Clock, { size: 18, color: restFinished ? C.bg : C.accent }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: restFinished ? C.bg : C.textSoft } }, restFinished ? "Pause vorbei!" : "Satzpause"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.mono, fontSize: 22, fontWeight: 700, color: restFinished ? C.bg : C.text, lineHeight: 1 } }, fmtDuration(restRemaining)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("button", { onClick: stopRestTimer, style: { background: restFinished ? "rgba(0,0,0,0.15)" : C.surfaceAlt, borderRadius: 8, padding: "8px 11px", fontSize: 11.5, fontWeight: 700, color: restFinished ? C.bg : C.text } }, restFinished ? "OK" : "Skip"))), /* @__PURE__ */ React.createElement("button", { onClick: finishWorkout, style: {
     width: "100%",
     marginTop: 20,
     background: C.accent,
@@ -1077,9 +1172,9 @@ function App() {
     alignItems: "center",
     justifyContent: "center",
     gap: 8
-  } }, /* @__PURE__ */ React.createElement(Check, { size: 17 }), " Workout beenden")), view === "history" && /* @__PURE__ */ React.createElement("div", { style: { padding: "22px 18px 90px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.display, fontSize: 26, letterSpacing: 1, marginBottom: 18 } }, "VERLAUF"), sessions.length === 0 && /* @__PURE__ */ React.createElement(EmptyState, { icon: HistoryIcon, title: "Noch keine Historie", subtitle: "Beende dein erstes Workout, um es hier zu sehen." }), sessions.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.textFaint, marginBottom: 10 } }, "\u2190 Nach links wischen zum L\xF6schen"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 9 } }, [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date)).map((s) => {
+  } }, /* @__PURE__ */ React.createElement(Check, { size: 17 }), " Workout beenden")), view === "history" && /* @__PURE__ */ React.createElement("div", { style: { padding: "22px 18px 90px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.display, fontSize: 26, letterSpacing: 1, marginBottom: 18 } }, "VERLAUF"), sessions.length === 0 && /* @__PURE__ */ React.createElement(EmptyState, { icon: HistoryIcon, title: "Noch keine Historie", subtitle: "Beende dein erstes Workout, um es hier zu sehen." }), sessions.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.textFaint, marginBottom: 10 } }, "Papierkorb gedr\xFCckt halten zum L\xF6schen"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 9 } }, [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date)).map((s) => {
     const open = expandedSessionId === s.id;
-    return /* @__PURE__ */ React.createElement(SwipeToDelete, { key: s.id, onDelete: () => deleteSession(s.id), borderRadius: 13 }, /* @__PURE__ */ React.createElement("div", { style: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 13, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setExpandedSessionId(open ? null : s.id), style: { width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 14px", background: "none", border: "none", color: C.text, font: "inherit" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "left" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14, color: C.text } }, s.planName), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.textFaint } }, fmtDate(s.date), " \xB7 ", s.entries.length, " \xDCbungen", s.durationSeconds ? ` \xB7 ${fmtDuration(s.durationSeconds)}` : "")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: F.mono, fontSize: 13, color: C.accent } }, Math.round(sessionVolume(s)), " kg"), open ? /* @__PURE__ */ React.createElement(ChevronDown, { size: 16, color: C.textFaint }) : /* @__PURE__ */ React.createElement(ChevronRight, { size: 16, color: C.textFaint }))), open && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 10 } }, s.entries.map((e) => /* @__PURE__ */ React.createElement("div", { key: e.exerciseId, style: { borderTop: `1px solid ${C.border}`, paddingTop: 10, display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement(GroupBar, { group: e.group }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, fontWeight: 600, marginBottom: 6 } }, e.name), e.sets.filter((st) => st.done).length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: C.textFaint } }, "Keine S\xE4tze abgeschlossen") : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, e.sets.filter((st) => st.done).map((st, i) => /* @__PURE__ */ React.createElement("span", { key: i, style: {
+    return /* @__PURE__ */ React.createElement("div", { key: s.id, style: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 13, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setExpandedSessionId(open ? null : s.id), style: { flex: 1, minWidth: 0, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 14px", background: "none", border: "none", color: C.text, font: "inherit" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "left" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14, color: C.text } }, s.planName), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.textFaint } }, fmtDate(s.date), " \xB7 ", s.entries.length, " \xDCbungen", s.durationSeconds ? ` \xB7 ${fmtDuration(s.durationSeconds)}` : "")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: F.mono, fontSize: 13, color: C.accent } }, Math.round(sessionVolume(s)), " kg"), open ? /* @__PURE__ */ React.createElement(ChevronDown, { size: 16, color: C.textFaint }) : /* @__PURE__ */ React.createElement(ChevronRight, { size: 16, color: C.textFaint }))), /* @__PURE__ */ React.createElement("div", { style: { paddingRight: 12, flexShrink: 0 } }, /* @__PURE__ */ React.createElement(HoldToDelete, { onDelete: () => deleteSession(s.id) }))), open && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 10 } }, s.entries.map((e) => /* @__PURE__ */ React.createElement("div", { key: e.exerciseId, style: { borderTop: `1px solid ${C.border}`, paddingTop: 10, display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement(GroupBar, { group: e.group }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, fontWeight: 600, marginBottom: 6 } }, e.name), e.sets.filter((st) => st.done).length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: C.textFaint } }, "Keine S\xE4tze abgeschlossen") : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, e.sets.filter((st) => st.done).map((st, i) => /* @__PURE__ */ React.createElement("span", { key: i, style: {
       fontFamily: F.mono,
       fontSize: 11.5,
       color: C.text,
@@ -1087,7 +1182,7 @@ function App() {
       border: `1px solid ${C.border}`,
       borderRadius: 999,
       padding: "3px 9px"
-    } }, st.weight || 0, "kg \xD7 ", st.reps || 0, st.rir !== "" && st.rir != null ? /* @__PURE__ */ React.createElement("span", { style: { color: C.textFaint } }, " \xB7 RIR ", st.rir) : null)))))))));
+    } }, st.weight || 0, "kg \xD7 ", st.reps || 0, st.rir !== "" && st.rir != null ? /* @__PURE__ */ React.createElement("span", { style: { color: C.textFaint } }, " \xB7 RIR ", st.rir) : null))))))));
   }))), view === "progress" && /* @__PURE__ */ React.createElement("div", { style: { padding: "22px 18px 90px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: F.display, fontSize: 26, letterSpacing: 1, marginBottom: 18 } }, "FORTSCHRITT"), progressExerciseOptions.length === 0 ? /* @__PURE__ */ React.createElement(EmptyState, { icon: TrendingUp, title: "Noch keine Daten", subtitle: "Logge Workouts, um Fortschritt pro \xDCbung zu sehen." }) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, overflowX: "auto", paddingBottom: 10, marginBottom: 16 } }, progressExerciseOptions.map((o) => /* @__PURE__ */ React.createElement(GroupChip, { key: o.id, label: o.name, active: progressExerciseId === o.id, onClick: () => setProgressExerciseId(o.id) }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 9, marginBottom: 18 } }, /* @__PURE__ */ React.createElement(StatCard, { label: "Rekord", value: progressPR, unit: "kg", icon: Trophy }), /* @__PURE__ */ React.createElement(StatCard, { label: "Einheiten", value: progressData.length, unit: "", icon: ClipboardList })), /* @__PURE__ */ React.createElement("div", { style: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 8px 8px", position: "relative" } }, progressPR > 0 && /* @__PURE__ */ React.createElement("div", { style: {
     position: "absolute",
     top: 12,
@@ -1163,5 +1258,16 @@ try {
   document.getElementById('fallback').style.display = 'block';
 }
 </script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function (err) {
+        console.warn('Service worker registration failed (expected on file:// or plain HTTP):', err);
+      });
+    });
+  }
+</script>
+
 </body>
 </html>
