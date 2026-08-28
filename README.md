@@ -41,6 +41,16 @@ https://DEIN-USERNAME.github.io/iron-log/
 
 Diese Adresse kannst du dann auf dem iPhone in Safari öffnen und per „Zum Home-Bildschirm" als App-Icon ablegen — ganz ohne AirDrop oder Dateien-App.
 
+## Als echte PWA installieren (App-Icon, Splashscreen, sofortiges Offline-Laden)
+
+Das Projekt enthält jetzt ein Manifest (`manifest.json`), eigene App-Icons (`icons/`, `apple-touch-icon.png`) und einen Service Worker (`sw.js`). Damit das funktioniert, **muss die App über HTTPS laufen** — Service Worker funktionieren aus Sicherheitsgründen nicht bei direkt geöffneten Dateien (`file://`). Das heißt: dieser Teil braucht die GitHub-Pages-URL aus Schritt 3 oben.
+
+1. Die GitHub-Pages-URL (`https://DEIN-USERNAME.github.io/iron-log/`) **einmal mit Internetverbindung** in Safari öffnen. Dabei installiert sich der Service Worker im Hintergrund und cached die komplette App.
+2. Teilen-Symbol → **„Zum Home-Bildschirm"**. Jetzt siehst du das eigene Plate-Icon (nicht mehr das Safari-Symbol) und beim Öffnen einen kurzen Splashscreen statt der Browser-Oberfläche.
+3. Ab jetzt lädt die App beim Öffnen **sofort aus dem Cache**, auch ganz ohne Internet/im Flugmodus.
+
+**Wichtig beim Aktualisieren:** Änderst du `index.html` künftig und pusht sie zu GitHub, merkt der Service Worker das automatisch beim nächsten Öffnen (im Hintergrund neu geladen, beim übernächsten Start aktiv). Falls eine Änderung partout nicht ankommt, in `sw.js` die Zahl in `CACHE_NAME` (z. B. `iron-log-v1` → `iron-log-v2`) hochzählen — das erzwingt einen kompletten Cache-Reset beim nächsten Laden.
+
 ⚠️ **Hinweis zu den Daten:** Da alles im `localStorage` des Browsers gespeichert wird, hat jede Kombination aus Browser + Gerät ihre eigene Historie. Öffnest du die GitHub-Pages-URL z. B. in Safari auf dem iPhone und später in Chrome am Mac, siehst du dort jeweils unterschiedliche Daten.
 
 ## Änderungen später aktualisieren
