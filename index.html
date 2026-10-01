@@ -514,8 +514,43 @@ const EXERCISES = [
   { id: "e6", name: "Leg Curl", group: "Beine" },
   { id: "e7", name: "Seated Biceps Curl", group: "Arme" },
   { id: "e8", name: "Seated Triceps Extension", group: "Arme" },
-  { id: "e9", name: "Seated Lateral Raise", group: "Schultern" }
+  { id: "e9", name: "Seated Lateral Raise", group: "Schultern" },
+  { id: "e10", name: "Preacher Curl", group: "Arme" },
+  { id: "e11", name: "Cable Triceps", group: "Arme" },
+  { id: "e12", name: "Romanian Deadlift Kettlebell", group: "Beine" }
 ];
+const MIGRATION_KEY = "migration-2026-10-01-plans";
+const exRef = (id, targetSets) => {
+  const ex = EXERCISES.find((e) => e.id === id);
+  return { exerciseId: ex.id, name: ex.name, group: ex.group, assisted: !!ex.assisted, targetSets: targetSets || 3 };
+};
+// Einmalige Anpassung der Pläne A und B (01.10.2026). Trainingsverlauf (Sessions) wird NICHT angefasst.
+const migratePlans20261001 = (plans) => {
+  const isPlan = (p, letter) => new RegExp("(^|\\s)" + letter + "$", "i").test((p.name || "").trim());
+  const planA = plans.filter((p) => isPlan(p, "A"));
+  const planB = plans.filter((p) => isPlan(p, "B"));
+  const replace = (list, fromId, toId) => list.map((x) => x.exerciseId === fromId ? exRef(toId, x.targetSets) : x);
+  return plans.map((p) => {
+    if (planA.length === 1 && p === planA[0]) {
+      let list = p.exercises.filter((x) => x.exerciseId !== "e6");
+      list = replace(list, "e7", "e10");
+      return { ...p, exercises: list };
+    }
+    if (planB.length === 1 && p === planB[0]) {
+      let list = p.exercises.filter((x) => x.exerciseId !== "e6");
+      list = replace(list, "e7", "e10");
+      list = replace(list, "e8", "e11");
+      if (!list.some((x) => x.exerciseId === "e12")) {
+        const i = list.findIndex((x) => x.exerciseId === "e5");
+        const item = exRef("e12", 3);
+        if (i >= 0) list = [...list.slice(0, i + 1), item, ...list.slice(i + 1)];
+        else list = [...list, item];
+      }
+      return { ...p, exercises: list };
+    }
+    return p;
+  });
+};
 const PLANS_KEY = "workout-plans-v1";
 const SESSIONS_KEY = "workout-sessions-v1";
 const REST_DURATION = 120;
@@ -807,7 +842,21 @@ function App() {
     (async () => {
       try {
         const p = await window.storage.get(PLANS_KEY, false);
-        setPlans(p ? JSON.parse(p.value) : []);
+        let loadedPlans = p ? JSON.parse(p.value) : [];
+        let migrated = false;
+        try { await window.storage.get(MIGRATION_KEY, false); migrated = true; } catch (e) { migrated = false; }
+        if (!migrated && loadedPlans.length > 0) {
+          try {
+            const next = migratePlans20261001(loadedPlans);
+            await window.storage.set("workout-plans-backup-2026-10-01", p.value, false);
+            await window.storage.set(PLANS_KEY, JSON.stringify(next), false);
+            await window.storage.set(MIGRATION_KEY, new Date().toISOString(), false);
+            loadedPlans = next;
+          } catch (err) {
+            console.error("Plan-Migration fehlgeschlagen", err);
+          }
+        }
+        setPlans(loadedPlans);
       } catch (e) {
         setPlans([]);
       }
