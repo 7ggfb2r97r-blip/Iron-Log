@@ -505,19 +505,19 @@ const GROUP_COLOR = {
   Arme: "#D6564C",
   Schultern: "#C77DD1"
 };
+// 13.11.2026: Umstellung auf funktionelles Training, neue Uebungen. Alte Liste siehe Backup/index-2026-11-13.html
 const EXERCISES = [
-  { id: "e1", name: "Chest Press", group: "Brust" },
-  { id: "e2", name: "Butterfly", group: "Brust" },
-  { id: "e3", name: "High Row", group: "R\xFCcken" },
-  { id: "e4", name: "Assisted Pull-Up", group: "R\xFCcken", assisted: true },
-  { id: "e5", name: "Leg Extension", group: "Beine" },
-  { id: "e6", name: "Leg Curl", group: "Beine" },
-  { id: "e7", name: "Seated Biceps Curl", group: "Arme" },
-  { id: "e8", name: "Seated Triceps Extension", group: "Arme" },
-  { id: "e9", name: "Seated Lateral Raise", group: "Schultern" },
-  { id: "e10", name: "Preacher Curl", group: "Arme" },
-  { id: "e11", name: "Cable Triceps", group: "Arme" },
-  { id: "e12", name: "Romanian Deadlift Kettlebell", group: "Beine" }
+  { id: "n1", name: "Bulgarian Split Squats", group: "Beine" },
+  { id: "n2", name: "Jefferson Curls", group: "R\xFCcken" },
+  { id: "n3", name: "Deadstop Row Multipresse", group: "R\xFCcken" },
+  { id: "n4", name: "SZ Curls", group: "Arme" },
+  { id: "n5", name: "Butterfly", group: "Brust" },
+  { id: "n6", name: "Triceps Pushdown", group: "Arme" },
+  { id: "n7", name: "Lateral Raise Maschine", group: "Schultern" },
+  { id: "n8", name: "Assisted Pull Ups", group: "R\xFCcken", assisted: true },
+  { id: "n9", name: "Chestpress", group: "Brust" },
+  { id: "n10", name: "Calve Raises", group: "Beine" },
+  { id: "n11", name: "RDL", group: "Beine" }
 ];
 const MIGRATION_KEY = "migration-2026-10-01-plans";
 const exRef = (id, targetSets) => {
@@ -841,19 +841,31 @@ function App() {
   useEffect(() => {
     (async () => {
       try {
-        const p = await window.storage.get(PLANS_KEY, false);
+        let p = null;
+        try { p = await window.storage.get(PLANS_KEY, false); } catch (e) { p = null; }
         let loadedPlans = p ? JSON.parse(p.value) : [];
         let migrated = false;
-        try { await window.storage.get(MIGRATION_KEY, false); migrated = true; } catch (e) { migrated = false; }
-        if (!migrated && loadedPlans.length > 0) {
+        const CLEAR_KEY = "migration-2026-11-13-neue-plaene";
+        try { await window.storage.get(CLEAR_KEY, false); migrated = true; } catch (e) { migrated = false; }
+        if (!migrated) {
           try {
-            const next = migratePlans20261001(loadedPlans);
-            await window.storage.set("workout-plans-backup-2026-10-01", p.value, false);
+            // Einmalig (13.11.2026): Plan A und Plan B bekommen die neuen Uebungen, alle anderen Plaene werden geleert. Trainingsverlauf bleibt. Sicherung der alten Plaene wird angelegt.
+            const planAEx = ["n1", "n2", "n3", "n4", "n5", "n6", "n7"];
+            const planBEx = ["n8", "n9", "n10", "n11", "n2", "n4", "n6"];
+            const isPlan = (pl, letter) => new RegExp("(^|\\s)" + letter + "$", "i").test((pl.name || "").trim());
+            let next = loadedPlans.map((pl) => {
+              if (isPlan(pl, "A")) return { ...pl, exercises: planAEx.map((id) => exRef(id, 3)) };
+              if (isPlan(pl, "B")) return { ...pl, exercises: planBEx.map((id) => exRef(id, 3)) };
+              return { ...pl, exercises: [] };
+            });
+            if (!next.some((pl) => isPlan(pl, "A"))) next = [...next, { id: uid(), name: "Plan A", exercises: planAEx.map((id) => exRef(id, 3)) }];
+            if (!next.some((pl) => isPlan(pl, "B"))) next = [...next, { id: uid(), name: "Plan B", exercises: planBEx.map((id) => exRef(id, 3)) }];
+            if (p) await window.storage.set("workout-plans-backup-2026-11-13", p.value, false);
             await window.storage.set(PLANS_KEY, JSON.stringify(next), false);
-            await window.storage.set(MIGRATION_KEY, new Date().toISOString(), false);
+            await window.storage.set(CLEAR_KEY, new Date().toISOString(), false);
             loadedPlans = next;
           } catch (err) {
-            console.error("Plan-Migration fehlgeschlagen", err);
+            console.error("Plan-Umstellung fehlgeschlagen", err);
           }
         }
         setPlans(loadedPlans);
